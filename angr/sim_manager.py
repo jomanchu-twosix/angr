@@ -3,6 +3,7 @@ import itertools
 import types
 from collections import defaultdict
 from typing import List, Tuple, DefaultDict
+import logging
 
 import claripy
 import mulpyplexer
@@ -10,7 +11,6 @@ import mulpyplexer
 from .misc.hookset import HookSet
 from .misc.ux import once
 
-import logging
 l = logging.getLogger(name=__name__)
 
 
@@ -70,7 +70,7 @@ class SimulationManager:
             completion_mode=any,
             techniques=None,
             **kwargs):
-        super(SimulationManager, self).__init__()
+        super().__init__()
 
         self._project = project
         self.completion_mode = completion_mode
@@ -639,7 +639,8 @@ class SimulationManager:
         self.prune(from_stash=stash)
         to_merge = self._fetch_states(stash=stash)
         not_to_merge = []
-        if merge_key is None: merge_key = self._merge_key
+        if merge_key is None:
+            merge_key = self._merge_key
 
         merge_groups = [ ]
         while to_merge:
@@ -821,5 +822,5 @@ class ErrorRecord:
 from .errors import SimError, SimMergeError
 from .sim_state import SimState
 from .state_hierarchy import StateHierarchy
-from .errors import AngrError, SimUnsatError, SimulationManagerError
+from .errors import AngrError, SimulationManagerError
 from .exploration_techniques import ExplorationTechnique, Veritesting, Threading, Explorer
