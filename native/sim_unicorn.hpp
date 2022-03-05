@@ -62,6 +62,7 @@ struct taint_entity_t {
 	// Instruction in which the entity is used. Used for taint sinks; ignored for taint sources.
 	address_t instr_addr;
 	int64_t value_size;
+	mutable bool used_in_mem_addr;
 
 	taint_entity_t() {
 		reg_offset = -1;
@@ -69,6 +70,7 @@ struct taint_entity_t {
 		mem_ref_entity_list.clear();
 		instr_addr = 0;
 		value_size = -1;
+		used_in_mem_addr = false;
 	}
 
 	bool operator==(const taint_entity_t &other_entity) const {
@@ -521,6 +523,9 @@ class State {
 	// separately for easy rollback in case of errors.
 	block_details_t curr_block_details;
 
+	// List of symbolic instructions in processed basic blocks that need not be re-executed. Will be removed on commit.
+	std::unordered_map<uint32_t, std::unordered_set<uint32_t>> symbolic_instrs_to_erase;
+
 	// List of register values at start of block
 	std::map<vex_reg_offset_t, register_value_t> block_start_reg_values;
 
@@ -601,6 +606,9 @@ class State {
 	void mark_temp_symbolic(vex_tmp_id_t temp_id);
 
 	void process_vex_block(IRSB *vex_block, address_t address);
+
+	void set_deps_mem_addr_status(const taint_entity_t &entity, instruction_taint_entry_t &instr_taint_entry);
+	void update_deps_mem_addr_status(const taint_entity_t &entity, instruction_taint_entry_t &instr_taint_entry);
 
 	void propagate_taints();
 	void propagate_taint_of_one_instr(address_t instr_addr, const instruction_taint_entry_t &instr_taint_entry);
@@ -702,8 +710,8 @@ class State {
 		// Mapping of VEX offsets to unicorn register IDs and register sizes
 		std::unordered_map<vex_reg_offset_t, std::pair<unicorn_reg_id_t, uint64_t>> vex_to_unicorn_map;
 		RegisterSet artificial_vex_registers; // Artificial VEX registers
-		std::unordered_map<vex_reg_offset_t, uint64_t> cpu_flags;	// VEX register offset and bitmask for CPU flags
-		int64_t cpu_flags_register;
+		// VEX flag register offset, corresponding unicorn register ID and bitmask for CPU flags
+		std::unordered_map<vex_reg_offset_t, std::pair<uint64_t, uint64_t>> cpu_flags;
 		stop_details_t stop_details;
 
 		// List of all values read from memory in current block
