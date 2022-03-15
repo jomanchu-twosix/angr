@@ -24,7 +24,7 @@ _all_optimization_passes = [
     (MultiSimplifier, True),
     (ModSimplifier, True),
     (ConstantDereferencesSimplifier, True),
-    (BlockMerger, True)
+    (BlockMerger, False)
 ]
 
 def get_optimization_passes(arch, platform):
