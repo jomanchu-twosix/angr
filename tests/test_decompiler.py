@@ -366,6 +366,28 @@ def test_decompiling_true_1804_x86_64():
     print(dec.codegen.text)
 
 
+def test_decompiling_true_mips64():
+
+    bin_path = os.path.join(test_location, "mips64", "true")
+    p = angr.Project(bin_path, auto_load_libs=False, load_debug_info=False)
+    cfg = p.analyses[CFGFast].prep()(normalize=True, data_references=True)
+
+    all_optimization_passes = angr.analyses.decompiler.optimization_passes.get_default_optimization_passes("MIPS64",
+                                                                                                           "linux")
+
+    f = cfg.functions['main']
+    dec = p.analyses[Decompiler].prep()(f, cfg=cfg.model, optimization_passes=all_optimization_passes)
+    # make sure strings exist
+    assert '"coreutils"' in dec.codegen.text
+    assert '"/usr/local/share/locale"' in dec.codegen.text
+    assert '"--help"' in dec.codegen.text
+    assert '"Jim Meyering"' in dec.codegen.text
+    # make sure function calls exist
+    assert "set_program_name(" in dec.codegen.text
+    assert "setlocale(" in dec.codegen.text
+    assert "usage();" in dec.codegen.text
+
+
 def test_decompiling_1after909_verify_password():
 
     bin_path = os.path.join(test_location, "x86_64", "1after909")
@@ -394,6 +416,13 @@ def test_decompiling_1after909_verify_password():
     strncmp_expr = m.group(0)
     strncmp_stmt = strncmp_expr + ";"
     assert strncmp_stmt not in code, "Call expressions folding failed for strncmp()"
+
+    lines = code.split("\n")
+    for line in lines:
+        if '"%02x"' in line:
+            assert "sprintf(" in line
+            assert "v0" in line and "v1" in line and "v2" in line, \
+                "Failed to find v0, v1, and v2 in the same line. Is propagator over-propagating?"
 
     assert "= sprintf" not in code, "Failed to remove the unused return value of sprintf()"
 
@@ -594,6 +623,46 @@ def test_decompilation_call_expr_folding():
     code = dec.codegen.text
     print(code)
     assert code.count("strlen(") == 1
+
+
+def test_decompilation_call_expr_folding_mips64_true():
+
+    # This test is to ensure call expression folding correctly replaces call expressions in return statements
+    bin_path = os.path.join(test_location, "mips64", "true")
+    p = angr.Project(bin_path, auto_load_libs=False)
+
+    cfg = p.analyses[CFGFast].prep()(data_references=True, normalize=True)
+
+    func_0 = cfg.functions['version_etc']
+    dec = p.analyses[Decompiler].prep()(func_0, cfg=cfg.model)
+    code = dec.codegen.text
+    print(code)
+    assert "version_etc_va(" in code
+
+
+def test_decompilation_call_expr_folding_x8664_calc():
+
+    # This test is to ensure call expression folding do not re-use out-dated definitions when folding expressions
+    bin_path = os.path.join(test_location, "x86_64", "calc")
+    p = angr.Project(bin_path, auto_load_libs=False)
+
+    cfg = p.analyses[CFGFast].prep()(data_references=True, normalize=True)
+    _ = p.analyses.CompleteCallingConventions(recover_variables=True)
+
+    func_0 = cfg.functions['main']
+    dec = p.analyses[Decompiler].prep()(func_0, cfg=cfg.model)
+    code = dec.codegen.text
+    print(code)
+
+    assert "root(" in code
+    assert "strlen(" in code  # incorrect call expression folding would fold root() into printf() and remove strlen()
+    assert "printf(" in code
+
+    lines = code.split("\n")
+    # make sure root() and strlen() appear within the same line
+    for line in lines:
+        if "root(" in line:
+            assert "strlen(" in line
 
 
 def test_decompilation_excessive_condition_removal():
@@ -877,6 +946,39 @@ def test_simple_strcpy():
     assert stmts[4].lhs.variable.variable == stmts[2].lhs.variable
     assert stmts[4].rhs.variable.variable == stmts[0].lhs.variable
     assert dw.condition.lhs.expr.variable.variable == stmts[2].lhs.variable
+
+
+def test_decompiling_nl_i386_pie():
+    bin_path = os.path.join(test_location, "i386", "nl")
+    p = angr.Project(bin_path, auto_load_libs=False)
+
+    cfg = p.analyses.CFGFast(normalize=True)
+    p.analyses.CompleteCallingConventions(cfg=cfg, recover_variables=True)
+
+    f = p.kb.functions['usage']
+    d = p.analyses.Decompiler(f, cfg=cfg.model)
+    print(d.codegen.text)
+
+    assert '"Usage: %s [OPTION]... [FILE]...\\n"' in d.codegen.text
+    assert '"Write each FILE to standard output, with line numbers added.\\nWith no FILE, or when FILE is -,' \
+           ' read standard input.\\n\\n"' in d.codegen.text
+    assert '"For complete documentation, run: info coreutils \'%s invocation\'\\n"' in d.codegen.text
+
+
+def test_decompiling_x8664_cvs():
+    bin_path = os.path.join(test_location, "x86_64", "cvs")
+    p = angr.Project(bin_path, auto_load_libs=False)
+
+    cfg = p.analyses.CFGFast(normalize=True, show_progressbar=True)
+    # p.analyses.CompleteCallingConventions(cfg=cfg, recover_variables=True)
+
+    f = p.kb.functions['main']
+    d = p.analyses.Decompiler(f, cfg=cfg.model, show_progressbar=True)
+    print(d.codegen.text)
+
+    # at the very least, it should decompile within a reasonable amount of time...
+    # the switch-case must be recovered
+    assert "switch (" in d.codegen.text
 
 
 if __name__ == "__main__":
