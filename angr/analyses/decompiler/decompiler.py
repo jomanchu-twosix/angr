@@ -108,10 +108,6 @@ class Decompiler(Analysis):
         ri = self.project.analyses.RegionIdentifier(self.func, graph=clinic.graph, cond_proc=cond_proc, kb=self.kb)
         self._update_progress(75., text='Structuring code')
 
-        from .optimization_passes.block_merger import BlockMerger
-        bm = BlockMerger(self.func, graph=clinic.graph, region_identifier=ri)
-        clinic.graph = bm.out_graph
-
         # structure it
         rs = self.project.analyses.RecursiveStructurer(ri.region, cond_proc=cond_proc, kb=self.kb, func=self.func)
         self._update_progress(80., text='Simplifying regions')
