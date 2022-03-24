@@ -333,6 +333,8 @@ def test_decompiling_true_a_x86_64_0():
     dec = p.analyses[Decompiler].prep()(f, cfg=cfg.model, optimization_passes=all_optimization_passes)
     print(dec.codegen.text)
 
+    assert dec.codegen.text.count("switch (") == 3  # there are three switch-cases in total
+
 
 def test_decompiling_true_a_x86_64_1():
 
@@ -979,6 +981,21 @@ def test_decompiling_x8664_cvs():
     # at the very least, it should decompile within a reasonable amount of time...
     # the switch-case must be recovered
     assert "switch (" in d.codegen.text
+
+
+def test_decompiling_x8664_mv_O2():
+    bin_path = os.path.join(test_location, "x86_64", "mv_-O2")
+    p = angr.Project(bin_path, auto_load_libs=False)
+
+    cfg = p.analyses.CFGFast(normalize=True, show_progressbar=True)
+    p.analyses.CompleteCallingConventions(cfg=cfg, recover_variables=True)
+
+    f = p.kb.functions['main']
+    d = p.analyses.Decompiler(f, cfg=cfg.model, show_progressbar=True)
+    print(d.codegen.text)
+
+    assert "(False)" not in d.codegen.text
+    assert "None" not in d.codegen.text
 
 
 if __name__ == "__main__":

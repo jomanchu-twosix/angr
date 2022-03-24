@@ -702,7 +702,7 @@ class CSwitchCase(CStatement):
         super().__init__(**kwargs)
 
         self.switch = switch
-        self.cases = cases
+        self.cases: List[Tuple[Union[int,Tuple[int]],CStatements]] = cases
         self.default = default
         self.tags = tags
 
@@ -726,9 +726,18 @@ class CSwitchCase(CStatement):
         yield "\n", self
 
         # cases
-        for idx, case in self.cases:
+        for id_or_ids, case in self.cases:
             yield indent_str, None
-            yield "case {}:\n".format(idx), self
+            if isinstance(id_or_ids, int):
+                yield f"case {id_or_ids}", self
+                yield ":\n", None
+            else:
+                for i, case_id in enumerate(id_or_ids):
+                    yield f"case {case_id}", self
+                    yield ":", None
+                    if i != len(id_or_ids) - 1:
+                        yield " ", None
+                yield "\n", None
             yield from case.c_repr_chunks(indent=indent + INDENT_DELTA)
 
         if self.default is not None:
@@ -1762,7 +1771,7 @@ class CStructuredCodeGenerator(BaseStructuredCodeGenerator, Analysis):
     # Util methods
     #
 
-    def _parse_addr(self, addr) -> Tuple[Optional[CExpression],Optional[CExpression]]:
+    def _parse_addr(self, addr) -> Tuple[Optional[CExpression],Optional[Union[CExpression,int]]]:
 
         if isinstance(addr, CExpression):
             expr = addr
@@ -1820,6 +1829,12 @@ class CStructuredCodeGenerator(BaseStructuredCodeGenerator, Analysis):
                     # GUESS: we need some guessing here
                     base = expr.lhs
                     offset = expr.rhs
+
+                if base is None:
+                    # this is also a guess
+                    base = expr.lhs
+                    offset = expr.rhs
+
                 return base, offset
         elif isinstance(expr, CVariable):
             return expr, 0
@@ -1833,7 +1848,7 @@ class CStructuredCodeGenerator(BaseStructuredCodeGenerator, Analysis):
         elif isinstance(expr, int):
             return None, expr
         elif isinstance(expr, Expr.DirtyExpression):
-            l.warning("Got a DirtyExpression %s. It should be handled during VEX->AIL conversion.", expr)
+            l.warning("Got a DirtyExpression %s. It should have been handled during VEX->AIL conversion.", expr)
             return expr, None
         elif isinstance(expr, CExpression):  # other expressions
             return expr, None
@@ -2211,14 +2226,27 @@ class CStructuredCodeGenerator(BaseStructuredCodeGenerator, Analysis):
 
         base, offset = self._parse_addr(expr.addr)
 
-        if base is not None and offset is not None and isinstance(base, CVariable):
-            return self._cvariable(base,
-                                   offset=offset,
-                                   variable_type=self.default_simtype_from_size(expr.size),
-                                   tags=expr.tags,
-                                   )
-        else:
+        if base is not None and offset is not None:
+            if isinstance(base, CVariable):
+                return self._cvariable(base,
+                                       offset=offset,
+                                       variable_type=self.default_simtype_from_size(expr.size),
+                                       tags=expr.tags,
+                                       )
+            else:
+                return self._cvariable(base,
+                                       offset=offset,
+                                       variable_type=self.default_simtype_from_size(expr.size),
+                                       tags=expr.tags,
+                                       )
+
+        if base is not None and offset is None:
+            return self._cvariable(base, tags=expr.tags)
+        if base is None and offset is not None:
             return self._cvariable(CConstant(offset, SimTypePointer(SimTypeInt), codegen=self), tags=expr.tags)
+
+        l.error("FIXME: Load with an unparseable address leading to a None in output.")
+        return self._cvariable(CConstant(None, SimTypePointer(SimTypeInt), codegen=self), tags=expr.tags)
 
     def _handle_Expr_Tmp(self, expr):  # pylint:disable=no-self-use
 
