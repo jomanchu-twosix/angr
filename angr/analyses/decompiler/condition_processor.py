@@ -135,23 +135,7 @@ class ConditionProcessor:
             if reaching_condition is not None:
                 reaching_conditions[node] = self.simplify_condition(reaching_condition)
 
-        # My hypothesis to be proved: in any regioned graph, there must be a node with a 0 out-degree whose reaching
-        # conditions can be marked as True. In other words, if all 0 out-degree nodes have non-trivial reaching
-        # conditions, we can always pick one of them and change its reaching condition to True, without changing the
-        # semantics of the regioned graph.
-        if terminating_nodes and all(not reaching_conditions[node].is_true() for node in terminating_nodes
-                                     if node in reaching_conditions):
-            # pick the node with the greatest in-degree
-            terminating_nodes = sorted(terminating_nodes, key=_g.in_degree)
-            node_with_greatest_indegree = terminating_nodes[-1]
-            if _g.in_degree(node_with_greatest_indegree) > 1:
-                # forcing the in-degree to be greater than 1 allows us to skip the case blocks in switch-cases
-                # otherwise structurer will fail to structure the control flow
-                reaching_conditions[node_with_greatest_indegree] = claripy.true
-                l.warning("Marking node %r as trivially reachable. Disable this optimization in condition_processor.py "
-                          "if it leads to incorrect decompilation result.", node_with_greatest_indegree)
-
-        # Another hypothesis: for nodes where two paths come together *and* those that cannot be further structured into
+        # My hypothesis: for nodes where two paths come together *and* those that cannot be further structured into
         # another if-else construct (we take the short-cut by testing if the operator is an "Or" after running our
         # condition simplifiers previously), we are better off using their "guarding conditions" instead of their
         # reaching conditions for if-else. see my super long chatlog with rhelmot on 5/14/2021.
@@ -546,6 +530,7 @@ class ConditionProcessor:
             '__and__': lambda cond_: _binary_op_reduce('And', cond_.args),
             '__lshift__': lambda cond_: _binary_op_reduce('Shl', cond_.args),
             '__rshift__': lambda cond_: _binary_op_reduce('Sar', cond_.args),
+            '__floordiv__': lambda cond_: _binary_op_reduce('Div', cond_.args),
             'LShR': lambda cond_: _binary_op_reduce('Shr', cond_.args),
             'BVV': lambda cond_: ailment.Expr.Const(None, None, cond_.args[0], cond_.size()),
             'BoolV': lambda cond_: ailment.Expr.Const(None, None, True, 1) if cond_.args[0] is True

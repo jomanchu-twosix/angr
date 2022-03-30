@@ -78,7 +78,7 @@ class Decompiler(Analysis):
         else:
             reset_variable_names = self.func.addr not in variable_kb.variables.function_managers
 
-        cache = DecompilationCache()
+        cache = DecompilationCache(self.func.addr)
 
         # convert function blocks to AIL blocks
         clinic = self.project.analyses.Clinic(self.func,
@@ -131,6 +131,7 @@ class Decompiler(Analysis):
                                                                 variable_kb=clinic.variable_kb,
                                                                 expr_comments=old_codegen.expr_comments if old_codegen is not None else None,
                                                                 stmt_comments=old_codegen.stmt_comments if old_codegen is not None else None,
+                                                                externs=clinic.externs,
                                                                 **self.options_to_params(options_by_class['codegen']))
         self._update_progress(90., text='Finishing up')
 

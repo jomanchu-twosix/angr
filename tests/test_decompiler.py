@@ -460,7 +460,9 @@ def test_decompiling_1after909_doit():
     # with global variables discovered, there should not be any loads of constant addresses.
     assert "fflush(stdout);" in code.lower()
 
-    m = re.search(r"if \([\S]*access\(&[\S]+, [\S]+\) != 0\)", code)
+    assert code.count("access(") == 2, "The decompilation should contain 2 calls to access(), but instead %d calls are present." % code.count("access(")
+
+    m = re.search(r"if \([\S]*access\(&[\S]+, [\S]+\) == -1\)", code)
     assert m is not None, "The if branch at 0x401c91 is not found. Structurer is incorrectly removing conditionals."
 
     # Arguments to the convert call should be fully folded into the call statement itself
@@ -795,7 +797,7 @@ def test_decompiling_fauxware_mipsel():
     # The function calls must be correctly decompiled
     assert "puts(" in code
     assert "read(" in code
-    assert "authenticate()" in code
+    assert "authenticate(" in code
     # The string references must be correctly recovered
     assert '"Username: "' in code
     assert '"Password: "' in code
@@ -945,9 +947,9 @@ def test_simple_strcpy():
     assert len(stmts) == 5
     assert stmts[1].lhs.unified_variable == stmts[0].rhs.unified_variable
     assert stmts[3].lhs.unified_variable == stmts[2].rhs.unified_variable
-    assert stmts[4].lhs.variable.variable == stmts[2].lhs.variable
-    assert stmts[4].rhs.variable.variable == stmts[0].lhs.variable
-    assert dw.condition.lhs.expr.variable.variable == stmts[2].lhs.variable
+    assert stmts[4].lhs.operand.variable == stmts[2].lhs.variable
+    assert stmts[4].rhs.operand.variable == stmts[0].lhs.variable
+    assert dw.condition.lhs.expr.operand.variable == stmts[2].lhs.variable
 
 
 def test_decompiling_nl_i386_pie():
@@ -996,6 +998,21 @@ def test_decompiling_x8664_mv_O2():
 
     assert "(False)" not in d.codegen.text
     assert "None" not in d.codegen.text
+
+
+def test_extern_decl():
+    bin_path = os.path.join(test_location, "x86_64", "test_gdb_plugin")
+    p = angr.Project(bin_path, auto_load_libs=False)
+
+    cfg = p.analyses.CFGFast(normalize=True)
+
+    f = p.kb.functions['set_globals']
+    d = p.analyses.Decompiler(f, cfg=cfg.model)
+    print(d.codegen.text)
+
+    assert "extern unsigned int a;" in d.codegen.text
+    assert "extern unsigned int b;" in d.codegen.text
+    assert "extern unsigned int c;" in d.codegen.text
 
 
 if __name__ == "__main__":
