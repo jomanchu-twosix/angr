@@ -21,7 +21,7 @@ _all_optimization_passes = [
     (RegisterSaveAreaSimplifier, True),
     (StackCanarySimplifier, True),
     (BasePointerSaveSimplifier, True),
-    (EagerReturnsSimplifier, True),
+    (EagerReturnsSimplifier, False),
     (DivSimplifier, True),
     (MultiSimplifier, True),
     (ModSimplifier, True),
