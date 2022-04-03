@@ -1,4 +1,4 @@
-# pylint:disable=superfluous-parens
+# pylint:disable=superfluous-parens,too-many-boolean-expressions
 import itertools
 import logging
 import math
@@ -265,7 +265,7 @@ class FunctionTransitionEdge(FunctionEdge):
     Describes a transition edge in functions' transition graphs.
     """
 
-    __slots__ = ('src_node', 'dst_addr', 'src_func_addr', 'to_outside', 'dst_func_addr', 'is_exception', )
+    __slots__ = ('src_node', 'dst_addr', 'to_outside', 'dst_func_addr', 'is_exception', )
 
     def __init__(self, src_node, dst_addr, src_func_addr, to_outside=False, dst_func_addr=None, stmt_idx=None,
                  ins_addr=None, is_exception=False):
@@ -515,6 +515,7 @@ class CFGFast(ForwardAnalysis, CFGBase):    # pylint: disable=abstract-method
                  use_patches=False,
                  elf_eh_frame=True,
                  exceptions=True,
+                 skip_unmapped_addrs=True,
                  nodecode_window_size=512,
                  nodecode_threshold=0.3,
                  nodecode_step=16483,
@@ -563,6 +564,8 @@ class CFGFast(ForwardAnalysis, CFGBase):    # pylint: disable=abstract-method
         :param bool detect_tail_calls:  Enable aggressive tail-call optimization detection.
         :param bool elf_eh_frame:       Retrieve function starts (and maybe sizes later) from the .eh_frame of ELF
                                         binaries.
+        :param skip_unmapped_addrs:     Ignore all branches into unmapped regions. True by default. You may want to set
+                                        it to False if you are analyzing manually patched binaries or malware samples.
         :param int start:               (Deprecated) The beginning address of CFG recovery.
         :param int end:                 (Deprecated) The end address of CFG recovery.
         :param CFGArchOptions arch_options: Architecture-specific options.
@@ -589,6 +592,7 @@ class CFGFast(ForwardAnalysis, CFGBase):    # pylint: disable=abstract-method
             indirect_jump_resolvers=indirect_jump_resolvers,
             indirect_jump_target_limit=indirect_jump_target_limit,
             detect_tail_calls=detect_tail_calls,
+            skip_unmapped_addrs=skip_unmapped_addrs,
             low_priority=low_priority,
             model=model,
         )
@@ -635,9 +639,16 @@ class CFGFast(ForwardAnalysis, CFGBase):    # pylint: disable=abstract-method
 
         if binary is not None and not objects:
             objects = [ binary ]
-        regions = regions if regions is not None else self._executable_memory_regions(objects=objects,
-                                                                                      force_segment=force_segment
-                                                                                      )
+        regions = regions if regions is not None else None
+
+        if regions is None:
+            if self._skip_unmapped_addrs:
+                regions = self._executable_memory_regions(objects=objects, force_segment=force_segment)
+            else:
+                if objects:
+                    regions = [(obj.min_addr, obj.max_addr) for obj in objects]
+                else:
+                    regions = [(obj.min_addr, obj.max_addr) for obj in self.project.loader.all_objects]
 
         if exclude_sparse_regions:
             new_regions = [ ]
@@ -2232,7 +2243,7 @@ class CFGFast(ForwardAnalysis, CFGBase):    # pylint: disable=abstract-method
         :rtype:     tuple
         """
 
-        if not self._addrs_belong_to_same_section(src_addr, target_addr):
+        if self._skip_unmapped_addrs and not self._addrs_belong_to_same_section(src_addr, target_addr):
             # if the target address is at another section, it has to be jumping to a new function
             target_func_addr = target_addr
             to_outside = True
@@ -3934,11 +3945,12 @@ class CFGFast(ForwardAnalysis, CFGBase):    # pylint: disable=abstract-method
                 has_executable_section = self._object_has_executable_sections(obj)
                 section = obj.find_section_containing(addr)
                 # If section is None, is there a segment?
+                segment = None
                 if section is None:
                     has_executable_segment = self._object_has_executable_segments(obj)
                     segment = obj.find_segment_containing(addr)
                 if (has_executable_section and section is None) and \
-                   (section is None and has_executable_segment and segment is None):
+                   (section is None and has_executable_segment and segment is None) and self._skip_unmapped_addrs:
                     # the basic block should not exist here...
                     return None, None, None, None
                 if section is not None:
@@ -4232,7 +4244,7 @@ class CFGFast(ForwardAnalysis, CFGBase):    # pylint: disable=abstract-method
                             nodecode_size = 4
 
                 if not valid_ins:
-                    l.error("Decoding error occurred at address %#x of function %#x.",
+                    l.debug("Decoding error occurred at address %#x of function %#x.",
                             addr + irsb_size,
                             current_function_addr
                             )
